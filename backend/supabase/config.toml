@@ -1,0 +1,22 @@
+project_id = "samadhan-setu"
+
+[functions.otp-verify-hook]
+verify_jwt = true
+
+[functions.complaints]
+verify_jwt = true
+
+[functions.authority-officers]
+verify_jwt = true
+
+[functions.authority-assignments]
+verify_jwt = true
+
+[functions.officer-cases]
+verify_jwt = true
+
+[functions.auth-password-change]
+verify_jwt = true
+
+[functions.score-recompute]
+verify_jwt = false

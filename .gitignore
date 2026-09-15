@@ -1,0 +1,39 @@
+﻿# Dependencies
+node_modules/
+.venv/
+__pycache__/
+
+# Next.js & Build Output
+.next/
+out/
+dist/
+build/
+
+# Environment Variables
+.env
+.env.local
+.env*.local
+
+# Vercel
+.vercel/
+
+# Archives & Temporary
+*.zip
+*.tar.gz
+*.bak
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Binaries
+*.exe
+backend/tools/
+
+backend/supabase/.temp/
