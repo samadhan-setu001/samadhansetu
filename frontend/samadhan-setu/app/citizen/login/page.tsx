@@ -12,10 +12,16 @@ import { useAuthRole } from "@/lib/hooks/useAuthRole";
 
 type AuthMode = "email_signin" | "email_signup" | "phone";
 
+const DEMO_CITIZENS = [
+  { email: "alex@example.com", name: "Alex Morgan" },
+  { email: "riyasharma@gmail.com", name: "Riya Sharma" },
+  { email: "testcitizen@city.gov", name: "Demo Citizen" }
+];
+
 export default function CitizenLoginPage() {
   const [mode, setMode] = useState<AuthMode>("email_signin");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("alex@example.com");
+  const [password, setPassword] = useState("VeriCity@2026!");
   const [name, setName] = useState("");
 
   const [phone, setPhone] = useState("");
@@ -183,6 +189,31 @@ export default function CitizenLoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
+
+              <div>
+                <p className="text-[11px] font-semibold text-ink-soft mb-1.5">Pre-configured Demo Citizens (Click to Select):</p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {DEMO_CITIZENS.map((c) => (
+                    <button
+                      key={c.email}
+                      type="button"
+                      onClick={() => {
+                        setEmail(c.email);
+                        setPassword("VeriCity@2026!");
+                        setError(null);
+                      }}
+                      className={`text-left p-2 rounded-lg border text-xs transition-all ${
+                        email === c.email
+                          ? "border-civic bg-blue-50/70 text-civic font-semibold shadow-xs"
+                          : "border-paper-line bg-paper text-ink-soft hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="font-bold text-[11px] truncate">{c.name}</div>
+                      <div className="text-[10px] text-ink-muted truncate">{c.email}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {error && <p className="text-xs font-medium text-brick">{error}</p>}
               {successMsg && <p className="text-xs font-medium text-verified">{successMsg}</p>}
