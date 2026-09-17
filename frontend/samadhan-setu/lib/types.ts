@@ -62,6 +62,8 @@ export interface ComplaintPublic {
   duplicate_of: string | null;
   upvote_count: number;
   created_at: string;
+  signature?: string | null;
+  signer_address?: string | null;
 }
 
 export interface CaseAssignment {
@@ -80,6 +82,9 @@ export interface Resolution {
   complaint_id: string;
   officer_id: string | null;
   after_photo_url: string;
+  after_photo_hash?: string;
+  previous_hash?: string | null;
+  ipfs_cid?: string | null;
   lat: number;
   long: number;
   resolved_at: string;

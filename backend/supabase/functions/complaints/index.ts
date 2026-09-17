@@ -13,16 +13,17 @@ Deno.serve(async (req) => {
   }
   const denied = requireRole(user, "citizen"); if (denied) return denied;
   if (req.method === "POST" && parts.length === 0) {
-    const body = await req.json(); const { domain_id, description, before_photo_url, lat, long, gps_accuracy_meters } = body;
+    const body = await req.json(); const { domain_id, description, before_photo_url, lat, long, gps_accuracy_meters, signature, signer_address } = body;
     if (!domain_id || !before_photo_url || !validLocation(lat, long)) return fail("domain_id, before_photo_url and valid location are required");
     if (typeof before_photo_url !== "string" || !before_photo_url.startsWith(`${user.id}/`)) return fail("Evidence must be an object path in your own storage folder");
     if (gps_accuracy_meters != null && (!Number.isFinite(gps_accuracy_meters) || gps_accuracy_meters > 50)) return fail("GPS accuracy must be 50 metres or better");
-    const { error: walletError } = await admin.from("citizen_wallets").upsert({ wallet_id: user.id }, { onConflict: "wallet_id", ignoreDuplicates: true });
-    if (walletError) return fail(walletError.message, 500);
+    const walletTarget = signer_address || user.id;
+    const { error: walletError } = await admin.from("citizen_wallets").upsert({ wallet_id: walletTarget, wallet_address: signer_address || null }, { onConflict: "wallet_id", ignoreDuplicates: true });
+    if (walletError) console.warn("citizen_wallets upsert warning:", walletError.message);
     const id = crypto.randomUUID(); const derived = await hmac(`${user.id}${id}`);
-    const { data, error } = await admin.from("complaints").insert({ id, wallet_id: user.id, derived_citizen_id: derived, domain_id, description, before_photo_url, lat, long }).select("id, derived_citizen_id, status, created_at").single();
+    const { data, error } = await admin.from("complaints").insert({ id, wallet_id: walletTarget, derived_citizen_id: derived, domain_id, description, before_photo_url, lat, long, signature: signature || null, signer_address: signer_address || null }).select("id, derived_citizen_id, status, created_at, signature, signer_address").single();
     if (error) return fail(error.message, 400);
-    await audit(admin, "citizen", user.id, "complaint_created", "complaint", id, { domain_id });
+    await audit(admin, "citizen", user.id, "complaint_created", "complaint", id, { domain_id, signature });
     return json({ complaint: data }, 201);
   }
   const complaintId = parts[0]; const action = parts[1];

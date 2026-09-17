@@ -1,0 +1,22 @@
+{
+  "name": "vericity-contracts",
+  "version": "1.0.0",
+  "description": "VeriCity Smart Contracts for Merkle Root Anchoring and Officer Reputation on Polygon Amoy",
+  "private": true,
+  "main": "hardhat.config.cjs",
+  "scripts": {
+    "node": "hardhat node",
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:local": "hardhat run scripts/deploy.cjs --network localhost",
+    "deploy:amoy": "hardhat run scripts/deploy.cjs --network amoy"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "hardhat": "^2.22.10"
+  },
+  "dependencies": {
+    "ethers": "^6.13.2"
+  }
+}

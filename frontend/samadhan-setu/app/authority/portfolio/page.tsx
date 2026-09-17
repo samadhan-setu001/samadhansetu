@@ -5,6 +5,8 @@ import { RoleShell } from "@/components/layout/RoleShell";
 import { Card } from "@/components/ui/Card";
 import { useRequireRole } from "@/lib/hooks/useRequireRole";
 import { fetchAuthority, fetchAuthorityQueue, fetchOfficersForAuthority } from "@/lib/api";
+import { getExplorerAddressUrl, OFFICER_REPUTATION_ADDRESS, RESOLUTION_ANCHOR_ADDRESS } from "@/lib/blockchain";
+import { BlockchainVerificationModal } from "@/components/blockchain/BlockchainVerificationModal";
 import type { Authority, ComplaintPublic, Officer } from "@/lib/types";
 
 const NAV = [
@@ -22,6 +24,7 @@ export default function PortfolioPage() {
   const [authority, setAuthority] = useState<Authority | undefined>();
   const [officers, setOfficers] = useState<Officer[]>([]);
   const [complaints, setComplaints] = useState<ComplaintPublic[]>([]);
+  const [selectedOfficerForModal, setSelectedOfficerForModal] = useState<Officer | null>(null);
 
   useEffect(() => {
     if (!ready || !session) return;
@@ -59,6 +62,7 @@ export default function PortfolioPage() {
               <th className="px-4 py-3 font-medium">Officer</th>
               <th className="px-4 py-3 font-medium">Open cases</th>
               <th className="px-4 py-3 font-medium">Score</th>
+              <th className="px-4 py-3 font-medium text-right">Blockchain Audit</th>
             </tr>
           </thead>
           <tbody>
@@ -80,6 +84,17 @@ export default function PortfolioPage() {
                     <span className="text-xs text-ink-soft">{o.performance_score ?? "—"}</span>
                   </div>
                 </td>
+                <td className="px-4 py-3 text-right">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedOfficerForModal(o)}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 px-2.5 py-1 rounded-md border border-purple-200 transition-colors cursor-pointer"
+                    title={`Verify ${o.name}'s score history with QR on Polygon Amoy`}
+                  >
+                    <span>⛓️ Verify</span>
+                    <span className="text-[9px]">↗</span>
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -89,6 +104,16 @@ export default function PortfolioPage() {
         Confirmed-resolution rate this period: {confirmedRate}%. Full on-time / reopen / confirmed
         breakdown recomputes nightly per section 9 once resolution history accumulates.
       </p>
+
+      {/* Interactive Blockchain Verification & QR Code Modal */}
+      <BlockchainVerificationModal
+        isOpen={Boolean(selectedOfficerForModal)}
+        onClose={() => setSelectedOfficerForModal(null)}
+        officerName={selectedOfficerForModal?.name}
+        officerId={selectedOfficerForModal?.officer_id}
+        domain={selectedOfficerForModal?.role || "Municipal Officer"}
+        score={selectedOfficerForModal?.performance_score ?? "50"}
+      />
     </RoleShell>
   );
 }

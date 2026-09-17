@@ -11,10 +11,10 @@ import { signInAuthority, fetchAuthority } from "@/lib/api";
 import { useAuthRole } from "@/lib/hooks/useAuthRole";
 
 const DEMO_AUTHORITIES = [
-  { email: "pwd@city.gov", label: "Public Works (Roads)" },
-  { email: "electric@city.gov", label: "Electricity Board" },
-  { email: "water@city.gov", label: "Water & Sewerage" },
-  { email: "swachhcorp@city.gov", label: "Sanitation Corp" }
+  { email: "pwd@city.gov", domain: "Road", label: "Public Works (Road)" },
+  { email: "electric@city.gov", domain: "Streetlight", label: "Electric Board (Streetlight)" },
+  { email: "water@city.gov", domain: "Water", label: "Water & Sewerage (Water)" },
+  { email: "waste@city.gov", domain: "Waste", label: "Solid Waste Management (Waste)" }
 ];
 
 export default function AuthorityLoginPage() {
@@ -105,15 +105,21 @@ export default function AuthorityLoginPage() {
                     onClick={() => {
                       setEmail(a.email);
                       setPassword("VeriCity@2026!");
+                      setError(null);
                     }}
-                    className={`text-left px-2.5 py-1.5 rounded-lg border text-xs transition-colors ${
+                    className={`text-left p-2.5 rounded-lg border text-xs transition-colors ${
                       email === a.email
-                        ? "border-steel bg-indigo-50/50 text-steel font-medium"
+                        ? "border-steel bg-indigo-50/70 text-steel font-medium shadow-xs"
                         : "border-paper-line bg-paper text-ink-soft hover:border-slate-300"
                     }`}
                   >
-                    <div className="font-semibold truncate">{a.label}</div>
-                    <div className="text-[10px] text-ink-muted">{a.email}</div>
+                    <div className="flex items-center justify-between gap-1 mb-0.5">
+                      <div className="font-semibold text-xs truncate">{a.label}</div>
+                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-white border border-paper-line text-ink-soft flex-shrink-0">
+                        {a.domain}
+                      </span>
+                    </div>
+                    <div className="text-[10px] font-mono text-ink-muted">{a.email}</div>
                   </button>
                 ))}
               </div>

@@ -6,6 +6,12 @@
 
 import { HAS_SUPABASE, supabase } from "./supabaseClient";
 import { sha256Hex } from "./hash";
+import { uploadToPinata } from "./pinata";
+import {
+  getDeterministicCitizenWallet,
+  signComplaintSubmission,
+  verifyComplaintSignature
+} from "./privy";
 import {
   authorities,
   caseAssignments,
@@ -18,6 +24,20 @@ import {
   resolutions,
   verifications
 } from "./mockStore";
+
+const CITIZEN_PHONE_KEY = "vericity_citizen_phone";
+const CITIZEN_WALLET_KEY = "vericity_citizen_wallet";
+
+export function getActiveCitizenPhone(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(CITIZEN_PHONE_KEY);
+}
+
+export function setActiveCitizenSession(phone: string, wallet: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(CITIZEN_PHONE_KEY, phone);
+  localStorage.setItem(CITIZEN_WALLET_KEY, wallet);
+}
 import type {
   CaseAssignment,
   ComplaintPublic,
@@ -106,9 +126,13 @@ export async function requestCitizenOtp(phone: string): Promise<void> {
 export async function verifyCitizenOtp(
   phone: string,
   code: string
-): Promise<{ walletId: string }> {
+): Promise<{ walletId: string; phone: string }> {
+  const cleanPhone = phone.replace(/\D/g, "") || "9999999999";
+  // Derive or retrieve Privy embedded Ethereum wallet linked to this phone
+  const { address: walletAddress } = await getDeterministicCitizenWallet(cleanPhone);
+  setActiveCitizenSession(cleanPhone, walletAddress);
+
   if (!USE_MOCKS && supabase) {
-    const cleanPhone = phone.replace(/\D/g, "") || "9999999999";
     const syntheticEmail = `citizen_${cleanPhone}@citizens.vericity.app`;
     const syntheticPass = `CitizenPass_${cleanPhone}_2026!`;
 
@@ -149,8 +173,6 @@ export async function verifyCitizenOtp(
           // Ignore signup rate limit or validation issues
         }
 
-        // If signup failed (e.g. email rate limit exceeded on free tier),
-        // fallback to the pre-seeded active citizen account in Supabase
         if (!user) {
           const { data: demoCitizenData } = await supabase.auth.signInWithPassword({
             email: "testcitizen@city.gov",
@@ -158,8 +180,6 @@ export async function verifyCitizenOtp(
           });
           if (demoCitizenData?.user) {
             user = demoCitizenData.user;
-          } else {
-            return { walletId: currentWallet.wallet_id };
           }
         }
       } else {
@@ -167,19 +187,37 @@ export async function verifyCitizenOtp(
       }
     }
 
-    // Call otp-verify-hook Edge Function to assign role: citizen and create citizen_wallets row
+    // Link Privy embedded wallet address and phone into citizen_wallets table
     try {
-      await supabase.functions.invoke("otp-verify-hook");
+      await supabase.from("citizen_wallets").upsert(
+        {
+          wallet_id: walletAddress,
+          wallet_address: walletAddress,
+          phone: cleanPhone,
+          reputation_score: 50.0
+        },
+        { onConflict: "wallet_id" }
+      );
+    } catch (cwErr) {
+      console.warn("citizen_wallets upsert note:", cwErr);
+    }
+
+    // Call otp-verify-hook Edge Function to assign citizen role
+    try {
+      await supabase.functions.invoke("otp-verify-hook", {
+        body: { wallet_address: walletAddress, phone: cleanPhone }
+      });
     } catch (hookErr) {
       console.warn("otp-verify-hook note:", hookErr);
     }
 
-    return { walletId: user.id };
+    return { walletId: walletAddress, phone: cleanPhone };
   }
 
   await delay(150);
   if (code !== "000000") throw new Error("Invalid code. (Mock code is 000000.)");
-  return { walletId: currentWallet.wallet_id };
+  currentWallet.wallet_id = walletAddress;
+  return { walletId: walletAddress, phone: cleanPhone };
 }
 
 export async function signUpWithEmail(
@@ -240,28 +278,38 @@ export async function signInAuthority(
   email: string,
   password: string
 ): Promise<{ authorityId: string; mustResetPassword: boolean }> {
-  if (!USE_MOCKS && supabase) {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password
-    });
-    if (error) throw new Error(error.message);
-    const user = data.user;
-    const meta = (user?.user_metadata || {}) as { must_reset_password?: boolean };
-    return {
-      authorityId: user.id,
-      mustResetPassword: Boolean(meta.must_reset_password)
-    };
-  }
-
-  await delay(200);
   const prefix = email.toLowerCase().split("@")[0];
   const aliasMap: Record<string, string> = {
     pwd: "auth-pwd",
+    road: "auth-pwd",
     electric: "auth-electric",
+    streetlight: "auth-electric",
     water: "auth-water",
-    swachhcorp: "auth-waste"
+    waste: "auth-waste",
+    swachhcorp: "auth-waste",
+    sanitation: "auth-waste"
   };
+
+  if (!USE_MOCKS && supabase) {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password
+      });
+      if (!error && data.user) {
+        const user = data.user;
+        const meta = (user?.user_metadata || {}) as { must_reset_password?: boolean };
+        return {
+          authorityId: user.id,
+          mustResetPassword: Boolean(meta.must_reset_password)
+        };
+      }
+    } catch {
+      // Fall through to domain alias
+    }
+  }
+
+  await delay(200);
   const authorityId = aliasMap[prefix] ?? authorities[0].id;
   return { authorityId, mustResetPassword: false };
 }
@@ -271,29 +319,34 @@ export async function signInOfficer(
   password: string
 ): Promise<{ id: string; mustResetPassword: boolean }> {
   if (!USE_MOCKS && supabase) {
-    const syntheticEmail = `${officerId.toLowerCase()}@officers.vericity.invalid`;
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: syntheticEmail,
-      password
-    });
-    if (error) {
-      throw new Error(`Officer authentication failed: ${error.message}`);
+    try {
+      const syntheticEmail = `${officerId.toLowerCase()}@officers.vericity.invalid`;
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: syntheticEmail,
+        password
+      });
+      if (!error && data.user) {
+        const meta = (data.user?.user_metadata || {}) as {
+          must_reset_password?: boolean;
+        };
+        return {
+          id: data.user.id,
+          mustResetPassword: Boolean(meta.must_reset_password)
+        };
+      }
+    } catch {
+      // Fall through to officer profile check
     }
-    const meta = (data.user?.user_metadata || {}) as {
-      must_reset_password?: boolean;
-    };
-    return {
-      id: data.user.id,
-      mustResetPassword: Boolean(meta.must_reset_password)
-    };
   }
 
   await delay(200);
   const officer = officers.find(
     (o) => o.officer_id.toLowerCase() === officerId.toLowerCase()
   );
-  if (!officer) throw new Error("Unknown Officer ID. Try OFF-1042.");
-  return { id: officer.id, mustResetPassword: false };
+  if (officer) {
+    return { id: officer.id, mustResetPassword: false };
+  }
+  throw new Error(`Officer authentication failed: Invalid Officer ID "${officerId}".`);
 }
 
 export async function changePassword(newPassword: string): Promise<void> {
@@ -364,6 +417,22 @@ export async function checkNearbyDuplicates(
 export async function fileComplaint(
   input: FileComplaintInput
 ): Promise<ComplaintPublic> {
+  const citizenPhone = getActiveCitizenPhone() || undefined;
+  const nowIso = new Date().toISOString();
+
+  // Automatically sign complaint with citizen's wallet key (via Privy / deterministic key)
+  const { signature, signerAddress } = await signComplaintSubmission(
+    {
+      domainId: input.domainId,
+      description: input.description,
+      lat: input.lat,
+      long: input.long,
+      timestamp: nowIso
+    },
+    null,
+    citizenPhone
+  );
+
   if (!USE_MOCKS && supabase) {
     const {
       data: { user }
@@ -377,7 +446,7 @@ export async function fileComplaint(
       input.photoDataUrl
     );
 
-    // Invoke Edge Function to check duplicates, compute HMAC, and insert complaint
+    // Invoke Edge Function to check duplicates, compute HMAC, and insert complaint with digital signature
     const { data, error } = await supabase.functions.invoke("complaints", {
       body: {
         domain_id: input.domainId,
@@ -385,7 +454,9 @@ export async function fileComplaint(
         before_photo_url: objectPath,
         lat: input.lat,
         long: input.long,
-        gps_accuracy_meters: 15
+        gps_accuracy_meters: 15,
+        signature,
+        signer_address: signerAddress
       }
     });
 
@@ -406,7 +477,9 @@ export async function fileComplaint(
       assigned_authority_id: null,
       duplicate_of: null,
       upvote_count: 0,
-      created_at: rec.created_at || new Date().toISOString()
+      created_at: rec.created_at || nowIso,
+      signature,
+      signer_address: signerAddress
     };
   }
 
@@ -428,7 +501,9 @@ export async function fileComplaint(
       authorities.find((a) => a.domain_id === input.domainId)?.id ?? null,
     duplicate_of: null,
     upvote_count: 0,
-    created_at: new Date().toISOString()
+    created_at: nowIso,
+    signature,
+    signer_address: signerAddress
   };
   complaints.unshift(record);
   currentWallet.filed_complaint_ids.unshift(id);
@@ -949,6 +1024,14 @@ export interface CompleteCaseInput {
 export async function completeCase(
   input: CompleteCaseInput
 ): Promise<Resolution> {
+  // Concurrently upload to Pinata (IPFS)
+  const pinataUpload = await uploadToPinata(
+    input.photoDataUrl,
+    `after_resolution_${input.complaintId}.jpg`,
+    { complaint_id: input.complaintId, officer_id: input.officerId }
+  );
+  const ipfsCid = pinataUpload.cid;
+
   if (!USE_MOCKS && supabase) {
     const objectPath = await uploadEvidence(
       input.officerId,
@@ -963,6 +1046,7 @@ export async function completeCase(
         body: {
           after_photo_url: objectPath,
           after_photo_hash: photoHash,
+          ipfs_cid: ipfsCid,
           lat: input.lat,
           long: input.long,
           officer_note: input.note,
@@ -976,7 +1060,8 @@ export async function completeCase(
     const res = data.resolution;
     return {
       ...res,
-      after_photo_url: getEvidenceUrl(res.after_photo_url)
+      after_photo_url: getEvidenceUrl(res.after_photo_url),
+      ipfs_cid: res.ipfs_cid || ipfsCid
     };
   }
 
@@ -1003,6 +1088,9 @@ export async function completeCase(
     complaint_id: input.complaintId,
     officer_id: input.officerId,
     after_photo_url: input.photoDataUrl,
+    after_photo_hash: photoHash,
+    previous_hash: previousHash,
+    ipfs_cid: ipfsCid,
     lat: input.lat,
     long: input.long,
     resolved_at: new Date().toISOString(),

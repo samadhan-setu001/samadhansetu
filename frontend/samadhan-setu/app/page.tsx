@@ -96,9 +96,9 @@ export default function Home() {
           </nav>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:inline-flex items-center gap-2 px-3 py-1 rounded-full bg-verified-soft text-verified text-xs font-semibold border border-verified-border">
+            <div className="hidden sm:inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-verified text-xs font-semibold border border-emerald-200">
               <span className="h-2 w-2 rounded-full bg-verified animate-pulse" />
-              Live Cryptographic Ledger
+              Blockchain-Verified Platform
             </div>
             <Link
               href="/citizen/login"
@@ -216,16 +216,16 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Security & Tech Specs */}
-      <section className="py-10 border-t border-paper-line bg-paper-subtle/40">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-xs text-ink-soft">
+      {/* Civic Trust & Transparency Specs */}
+      <section className="py-8 border-t border-paper-line bg-paper-subtle/40">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-ink-soft">
           <div>
-            <span className="font-bold text-ink">Backend Infrastructure:</span> Powered by Supabase PostgreSQL, Row Level Security, Edge Functions & SHA-256 Record Chaining.
+            <span className="font-bold text-ink">Civic Trust Architecture:</span> Tamper-evident field proofs, IPFS decentralized photo storage, and immutable Polygon blockchain audit trails.
           </div>
           <div className="flex items-center gap-6">
-            <span>Domains: <strong>Road</strong>, <strong>Streetlight</strong>, <strong>Water</strong>, <strong>Waste</strong></span>
+            <span>Departments: <strong>Road</strong>, <strong>Streetlight</strong>, <strong>Water</strong>, <strong>Waste</strong></span>
             <span>·</span>
-            <span>Security: <strong>Zero-Trust RLS</strong></span>
+            <span>Status: <strong className="text-verified">Public Ledger Active</strong></span>
           </div>
         </div>
       </section>

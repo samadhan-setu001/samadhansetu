@@ -147,7 +147,7 @@ export function RoleShell({
           <div className="flex items-center gap-4 text-ink-soft">
             <span className="inline-flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-verified" />
-              Mainnet Active
+              Polygon Amoy Testnet
             </span>
             <span>·</span>
             <Link href="/" className="hover:text-civic transition-colors">Portal Home</Link>

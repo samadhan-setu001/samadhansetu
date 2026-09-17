@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/Input";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useRequireRole } from "@/lib/hooks/useRequireRole";
 import { fetchAuthority, fetchOfficersForAuthority, provisionOfficer, fetchDomains } from "@/lib/api";
+import { getExplorerAddressUrl, OFFICER_REPUTATION_ADDRESS } from "@/lib/blockchain";
+import { BlockchainVerificationModal } from "@/components/blockchain/BlockchainVerificationModal";
 import type { Officer, Domain } from "@/lib/types";
 
 const NAV = [
@@ -19,6 +21,7 @@ const NAV = [
 export default function OfficersPage() {
   const { session, ready, logout } = useRequireRole("authority");
   const [officers, setOfficers] = useState<Officer[] | null>(null);
+  const [selectedOfficerForModal, setSelectedOfficerForModal] = useState<Officer | null>(null);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [domainId, setDomainId] = useState<string | null>(null);
 
@@ -205,9 +208,30 @@ export default function OfficersPage() {
               <span>Cases: <strong>{o.open_case_count ?? 0} active</strong></span>
               <span>Performance: <strong>{o.performance_score ?? "50"}%</strong></span>
             </div>
+            <div className="mt-2.5 pt-2 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedOfficerForModal(o)}
+                className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 px-2.5 py-1 rounded-md border border-purple-200 transition-colors shadow-2xs"
+                title={`Verify ${o.name}'s historical scores with QR on Polygon Amoy`}
+              >
+                <span>⛓️ Verify on Blockchain (QR)</span>
+                <span className="text-[10px]">↗</span>
+              </button>
+            </div>
           </Card>
         ))}
       </div>
+
+      {/* Interactive Blockchain Verification & QR Code Modal */}
+      <BlockchainVerificationModal
+        isOpen={Boolean(selectedOfficerForModal)}
+        onClose={() => setSelectedOfficerForModal(null)}
+        officerName={selectedOfficerForModal?.name}
+        officerId={selectedOfficerForModal?.officer_id}
+        domain={selectedOfficerForModal?.role || "Municipal Officer"}
+        score={selectedOfficerForModal?.performance_score ?? "50"}
+      />
     </RoleShell>
   );
 }

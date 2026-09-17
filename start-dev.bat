@@ -6,9 +6,9 @@ echo ========================================================
 echo.
 cd /d "%~dp0frontend\samadhan-setu"
 echo Starting Next.js development server...
-echo The server runs continuously in this window. Keep this open!
-echo Opening http://localhost:3000 in your browser...
+echo Waiting a few seconds for the dev server to initialize before opening your browser...
+echo The server runs continuously in this window. Keep this window open!
 echo.
-start http://localhost:3000
-cmd /c npm run dev
+start "" powershell -NoProfile -Command "Start-Sleep -Seconds 6; Start-Process 'http://localhost:3000'"
+npm run dev
 pause

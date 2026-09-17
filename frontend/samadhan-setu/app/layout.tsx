@@ -30,6 +30,8 @@ export const metadata: Metadata = {
   }
 };
 
+import { PrivyProviderWrapper } from "@/components/providers/PrivyProviderWrapper";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${fraunces.variable} ${plexSans.variable} ${plexMono.variable}`}>
@@ -40,7 +42,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="h-[1.5px] bg-white w-full" />
           <div className="h-[2.5px] bg-[#138808] w-full" />
         </div>
-        {children}
+        <PrivyProviderWrapper>
+          {children}
+        </PrivyProviderWrapper>
       </body>
     </html>
   );

@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 .venv/
 __pycache__/
@@ -8,11 +8,15 @@ __pycache__/
 out/
 dist/
 build/
+*.tsbuildinfo
+blockchain/artifacts/
+blockchain/cache/
 
-# Environment Variables
+# Environment Variables & Secrets
 .env
 .env.local
 .env*.local
+api/
 
 # Vercel
 .vercel/

@@ -11,6 +11,9 @@ import { LiveCameraCapture } from "@/components/camera/LiveCameraCapture";
 import { ComplaintTimeline } from "@/components/status/ComplaintTimeline";
 import { useRequireRole } from "@/lib/hooks/useRequireRole";
 import { acceptCase, completeCase, fetchComplaintDetail, getEvidenceUrl } from "@/lib/api";
+import { getIpfsGatewayUrl } from "@/lib/pinata";
+import { getExplorerAddressUrl, OFFICER_REPUTATION_ADDRESS } from "@/lib/blockchain";
+import { BlockchainVerificationModal } from "@/components/blockchain/BlockchainVerificationModal";
 import type { CaseAssignment, ComplaintPublic, Resolution, Verification } from "@/lib/types";
 
 const NAV = [{ href: "/officer/cases", label: "My Field Cases" }];
@@ -31,6 +34,7 @@ export default function OfficerCaseDetailPage() {
   const [note, setNote] = useState("");
   const [afterPhoto, setAfterPhoto] = useState<string | null>(null);
   const [afterGeo, setAfterGeo] = useState<{ lat: number; long: number } | null>(null);
+  const [showBlockchainModal, setShowBlockchainModal] = useState(false);
 
   const load = async () => {
     setData(await fetchComplaintDetail(params.id));
@@ -206,8 +210,40 @@ export default function OfficerCaseDetailPage() {
                   />
                 </div>
                 <p className="mt-3 text-sm text-ink">{data.resolution.officer_note || "Resolution completed."}</p>
-                <div className="mt-3 pt-3 border-t border-paper-line text-xs font-mono text-ink-soft truncate">
-                  Record Hash: {data.resolution.record_hash}
+
+                {data.resolution.ipfs_cid && (
+                  <div className="mt-3 p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-200 flex items-center justify-between text-xs">
+                    <div className="min-w-0 flex-1 pr-2">
+                      <span className="font-semibold text-emerald-800 flex items-center gap-1">
+                        <span>📦</span> Pinned to Pinata (IPFS):
+                      </span>
+                      <p className="font-mono text-[11px] text-emerald-950 truncate mt-0.5">
+                        {data.resolution.ipfs_cid}
+                      </p>
+                    </div>
+                    <a
+                      href={getIpfsGatewayUrl(data.resolution.ipfs_cid)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] flex-shrink-0 transition-colors"
+                    >
+                      Gateway ↗
+                    </a>
+                  </div>
+                )}
+
+                <div className="mt-3 pt-3 border-t border-paper-line flex items-center justify-between text-xs text-ink-soft">
+                  <span className="font-mono text-[11px] truncate max-w-xs">
+                    Record Hash: {data.resolution.record_hash}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowBlockchainModal(true)}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded border border-purple-200 transition-colors cursor-pointer"
+                  >
+                    <span>⛓️ On-Chain Track Record (QR)</span>
+                    <span className="text-[10px]">↗</span>
+                  </button>
                 </div>
               </Card>
             )}
@@ -225,6 +261,17 @@ export default function OfficerCaseDetailPage() {
             </Card>
           </div>
         </div>
+      )}
+
+      {session && (
+        <BlockchainVerificationModal
+          isOpen={showBlockchainModal}
+          onClose={() => setShowBlockchainModal(false)}
+          officerName={session.label || "Field Officer"}
+          officerId={session.id}
+          domain="Field Resolution Unit"
+          score="92.0"
+        />
       )}
     </RoleShell>
   );

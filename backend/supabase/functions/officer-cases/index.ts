@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
     return json({ status: "in_progress" });
   }
   if (action === "complete") {
-    const { after_photo_url, after_photo_hash, lat, long, officer_note, gps_accuracy_meters, captured_at } = await req.json();
+    const { after_photo_url, after_photo_hash, ipfs_cid, lat, long, officer_note, gps_accuracy_meters, captured_at } = await req.json();
     if (!after_photo_url || !after_photo_hash || !validLocation(lat, long)) return fail("after_photo_url, after_photo_hash and valid location are required");
     if (typeof after_photo_url !== "string" || !after_photo_url.startsWith(`${officerId}/`)) return fail("Evidence must be an object path in your own storage folder");
     if (gps_accuracy_meters != null && (!Number.isFinite(gps_accuracy_meters) || gps_accuracy_meters > 50)) return fail("GPS accuracy must be 50 metres or better");
@@ -26,11 +26,11 @@ Deno.serve(async (req) => {
     const { data: last } = await admin.from("resolutions").select("record_hash").eq("complaint_id", assignment.complaint_id).order("resolved_at", { ascending: false }).limit(1).maybeSingle();
     const previousHash = last?.record_hash ?? "GENESIS";
     const recordHash = await sha256(`${assignment.complaint_id}${officerId}${after_photo_hash}${lat}${long}${resolvedAt}${previousHash}`);
-    const { data, error } = await admin.from("resolutions").insert({ complaint_id: assignment.complaint_id, officer_id: officerId, after_photo_url, after_photo_hash, lat, long, resolved_at: resolvedAt, officer_note, previous_hash: previousHash, record_hash: recordHash }).select().single();
+    const { data, error } = await admin.from("resolutions").insert({ complaint_id: assignment.complaint_id, officer_id: officerId, after_photo_url, after_photo_hash, ipfs_cid: ipfs_cid || null, lat, long, resolved_at: resolvedAt, officer_note, previous_hash: previousHash, record_hash: recordHash }).select().single();
     if (error) return fail(error.message, 400);
     await admin.from("case_assignments").update({ status: "authority_review" }).eq("id", assignmentId);
     await admin.from("complaints").update({ status: "under_review" }).eq("id", assignment.complaint_id);
-    await audit(admin, "officer", officerId, "resolution_submitted", "resolution", data.id, { assignment_id: assignmentId, record_hash: recordHash });
+    await audit(admin, "officer", officerId, "resolution_submitted", "resolution", data.id, { assignment_id: assignmentId, record_hash: recordHash, ipfs_cid });
     return json({ resolution: data }, 201);
   }
   return fail("Not found", 404);

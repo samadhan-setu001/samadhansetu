@@ -31,5 +31,31 @@ Deno.serve(async (req) => {
       await admin.from("authorities").update({ performance_score: average.toFixed(2) }).eq("id", authority.id);
     }
   }
-  return json({ ok: true, recomputed_at: new Date().toISOString() });
+
+  // Merkle Root calculation from all resolution hash-chain records
+  const { data: resolutionsData } = await admin.from("resolutions").select("record_hash").order("resolved_at", { ascending: true });
+  const hashes = (resolutionsData ?? []).map((r) => r.record_hash).filter(Boolean);
+  let merkleRoot = "0x0000000000000000000000000000000000000000000000000000000000000000";
+  if (hashes.length > 0) {
+    let current = [...hashes];
+    while (current.length > 1) {
+      const next: string[] = [];
+      for (let i = 0; i < current.length; i += 2) {
+        const a = current[i];
+        const b = i + 1 < current.length ? current[i + 1] : current[i];
+        const combined = a < b ? `${a}${b}` : `${b}${a}`;
+        next.push(await sha256(combined));
+      }
+      current = next;
+    }
+    merkleRoot = `0x${current[0]}`;
+  }
+  await admin.from("audit_log").insert({
+    actor_type: "system",
+    action: "merkle_root_computed",
+    entity_type: "resolution_tree",
+    metadata: { merkle_root: merkleRoot, total_records: hashes.length }
+  });
+
+  return json({ ok: true, recomputed_at: new Date().toISOString(), merkle_root: merkleRoot, total_records: hashes.length });
 });
