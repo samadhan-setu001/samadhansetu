@@ -49,10 +49,18 @@ export interface Officer {
   performance_score?: number;
 }
 
+export interface ProblemType {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+}
+
 export interface ComplaintPublic {
   id: string;
   derived_citizen_id: string;
   domain_id: string;
+  problem_type?: string;
   description: string | null;
   before_photo_url: string;
   lat: number;
@@ -101,6 +109,17 @@ export interface Verification {
   derived_citizen_id: string;
   verdict: VerificationVerdict;
   comment: string | null;
+  created_at: string;
+}
+
+export interface ComplaintProof {
+  id: string;
+  complaint_id: string;
+  wallet_id?: string;
+  derived_citizen_id: string;
+  photo_url: string;
+  lat?: number;
+  long?: number;
   created_at: string;
 }
 

@@ -28,9 +28,16 @@ Deno.serve(async (req) => {
   }
   const complaintId = parts[0]; const action = parts[1];
   if (req.method === "POST" && complaintId && action === "upvote") {
-    const { photo_url, lat, long } = await req.json(); if (!photo_url || !validLocation(lat, long)) return fail("photo_url and valid location are required");
+    const { photo_url, lat, long, domain_id } = await req.json(); if (!photo_url || !validLocation(lat, long)) return fail("photo_url and valid location are required");
     if (typeof photo_url !== "string" || !photo_url.startsWith(`${user.id}/`)) return fail("Evidence must be an object path in your own storage folder");
-    const { data: complaint, error: readError } = await admin.from("complaints").select("id").eq("id", complaintId).single(); if (readError || !complaint) return fail("Complaint not found", 404);
+    const { data: complaint, error: readError } = await admin.from("complaints").select("id, domain_id, lat, long, status").eq("id", complaintId).single(); if (readError || !complaint) return fail("Complaint not found", 404);
+    if (domain_id && complaint.domain_id !== domain_id) return fail("Complaint domain mismatch: reinforcement must be for the same issue domain", 400);
+    const R = 6371000; const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(Number(complaint.lat) - lat); const dLon = toRad(Number(complaint.long) - long);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat)) * Math.cos(toRad(Number(complaint.lat))) * Math.sin(dLon / 2) ** 2;
+    const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    if (dist > 150) return fail("Location mismatch: proof must be captured near the original complaint location (within 150m)", 400);
+    await admin.from("citizen_wallets").upsert({ wallet_id: user.id }, { onConflict: "wallet_id", ignoreDuplicates: true });
     const derived = await hmac(`${user.id}${complaintId}`);
     const { error } = await admin.from("complaint_upvotes").insert({ complaint_id: complaintId, wallet_id: user.id, derived_citizen_id: derived, photo_url, lat, long });
     if (error) return fail(error.code === "23505" ? "You already added proof to this complaint" : error.message, 400);

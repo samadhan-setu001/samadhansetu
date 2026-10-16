@@ -12,8 +12,9 @@ import { useRequireRole } from "@/lib/hooks/useRequireRole";
 import { fetchComplaintDetail, submitVerification, getEvidenceUrl, findOfficer } from "@/lib/api";
 import { getExplorerAddressUrl, OFFICER_REPUTATION_ADDRESS } from "@/lib/blockchain";
 import { BlockchainVerificationModal } from "@/components/blockchain/BlockchainVerificationModal";
+import { EvidenceImage } from "@/components/ui/EvidenceImage";
 import { getIpfsGatewayUrl } from "@/lib/pinata";
-import type { CaseAssignment, ComplaintPublic, Resolution, Verification } from "@/lib/types";
+import type { CaseAssignment, ComplaintProof, ComplaintPublic, Resolution, Verification } from "@/lib/types";
 
 const NAV = [
   { href: "/citizen/file", label: "File a Report" },
@@ -29,6 +30,7 @@ export default function CitizenComplaintDetailPage() {
     assignment?: CaseAssignment;
     resolution?: Resolution;
     verification?: Verification;
+    proofs?: ComplaintProof[];
   } | null>(null);
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState<"confirmed" | "disputed" | null>(null);
@@ -79,8 +81,9 @@ export default function CitizenComplaintDetailPage() {
               <div>
                 <p className="mb-1.5 text-xs font-semibold text-ink-soft">Field Filing — Before</p>
                 <div className="aspect-square w-full overflow-hidden rounded-xl border border-paper-line shadow-sm">
-                  <img
-                    src={getEvidenceUrl(data.complaint.before_photo_url)}
+                  <EvidenceImage
+                    src={data.complaint.before_photo_url}
+                    domainId={data.complaint.domain_id}
                     alt="Before"
                     className="h-full w-full object-cover"
                   />
@@ -92,8 +95,9 @@ export default function CitizenComplaintDetailPage() {
                 </p>
                 {data.resolution ? (
                   <div className="aspect-square w-full overflow-hidden rounded-xl border border-paper-line shadow-sm">
-                    <img
-                      src={getEvidenceUrl(data.resolution.after_photo_url)}
+                    <EvidenceImage
+                      src={data.resolution.after_photo_url}
+                      domainId={data.complaint.domain_id}
                       alt="After"
                       className="h-full w-full object-cover"
                     />
@@ -174,6 +178,59 @@ export default function CitizenComplaintDetailPage() {
                 </div>
               </Card>
             )}
+
+            {/* Citizen Evidence & Reinforcement Proofs */}
+            <Card className="mt-4 p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-ink flex items-center gap-1.5">
+                    <span>👥</span> Citizen Evidence & Reinforcement Proofs
+                  </h3>
+                  <p className="text-xs text-ink-soft mt-0.5">
+                    {data.proofs && data.proofs.length > 0
+                      ? `${data.proofs.length} additional citizen evidence photo${data.proofs.length > 1 ? "s" : ""} submitted for this report.`
+                      : "No additional citizen reinforcement photos yet."}
+                  </p>
+                </div>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-civic-soft text-civic border border-civic/20">
+                  {data.proofs?.length || data.complaint.upvote_count || 0} Confirmations
+                </span>
+              </div>
+
+              {data.proofs && data.proofs.length > 0 ? (
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {data.proofs.map((proof, idx) => (
+                    <div key={proof.id || idx} className="rounded-xl border border-paper-line overflow-hidden bg-paper shadow-xs">
+                      <div className="aspect-square w-full overflow-hidden bg-slate-100">
+                        <EvidenceImage
+                          src={proof.photo_url}
+                          domainId={data.complaint.domain_id}
+                          alt={`Citizen proof ${idx + 1}`}
+                          className="h-full w-full object-cover hover:scale-105 transition-transform"
+                        />
+                      </div>
+                      <div className="p-2.5 text-[11px]">
+                        <p className="font-semibold text-ink truncate">
+                          Citizen #{proof.derived_citizen_id?.slice(0, 8) || "Verifier"}
+                        </p>
+                        <p className="text-ink-muted text-[10px]">
+                          {new Date(proof.created_at).toLocaleDateString()}
+                        </p>
+                        {proof.lat != null && proof.long != null && (
+                          <p className="text-[10px] text-ink-soft font-mono mt-0.5">
+                            📍 {proof.lat.toFixed(4)}, {proof.long.toFixed(4)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-xs text-ink-muted">
+                  No additional citizen proofs attached yet. Reinforcements can be submitted on-site via the File Report scan flow.
+                </p>
+              )}
+            </Card>
 
             {/* Citizen Digital Signature Card (Requirement 2) */}
             <Card className="mt-4 p-4 border-paper-line bg-paper-subtle/50 text-xs">
@@ -262,6 +319,7 @@ export default function CitizenComplaintDetailPage() {
           score={findOfficer(data.assignment.officer_id)?.performance_score ?? "87.5"}
         />
       )}
+
     </RoleShell>
   );
 }

@@ -15,6 +15,7 @@ import {
 import {
   authorities,
   caseAssignments,
+  complaintProofs,
   complaints,
   currentWallet,
   domains as mockDomains,
@@ -22,7 +23,9 @@ import {
   findOfficer,
   officers,
   resolutions,
-  verifications
+  verifications,
+  saveMockStore,
+  hydrateMockStore
 } from "./mockStore";
 
 const CITIZEN_PHONE_KEY = "vericity_citizen_phone";
@@ -40,11 +43,13 @@ export function setActiveCitizenSession(phone: string, wallet: string) {
 }
 import type {
   CaseAssignment,
+  ComplaintProof,
   ComplaintPublic,
   ComplaintStatus,
   Domain,
   Officer,
   PriorityLevel,
+  ProblemType,
   Resolution,
   Verification,
   VerificationVerdict
@@ -62,6 +67,22 @@ const genId = (prefix: string) =>
  */
 export function getEvidenceUrl(pathOrUrl?: string | null): string {
   if (!pathOrUrl) return "";
+  // Fix known dead/corrupted test URLs and 404 Unsplash placeholders
+  if (pathOrUrl === "data:image/jpeg;base64,/9j/4AAQSkZJRg==") {
+    return "https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=800&q=80";
+  }
+  if (pathOrUrl.includes("photo-1583912267550-d6c2ac3196c0")) {
+    return "https://images.unsplash.com/photo-1527066579998-dbbae57f45ce?w=800&q=80";
+  }
+  if (pathOrUrl.includes("photo-1519500528435-f5641bee5a3c")) {
+    return "https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=800&q=80";
+  }
+  if (pathOrUrl.startsWith("ipfs://")) {
+    return `https://gateway.pinata.cloud/ipfs/${pathOrUrl.slice(7)}`;
+  }
+  if (pathOrUrl.startsWith("Qm") || pathOrUrl.startsWith("bafy")) {
+    return `https://gateway.pinata.cloud/ipfs/${pathOrUrl}`;
+  }
   if (
     pathOrUrl.startsWith("http://") ||
     pathOrUrl.startsWith("https://") ||
@@ -211,6 +232,7 @@ export async function verifyCitizenOtp(
       console.warn("otp-verify-hook note:", hookErr);
     }
 
+    currentWallet.wallet_id = walletAddress;
     return { walletId: walletAddress, phone: cleanPhone };
   }
 
@@ -366,51 +388,161 @@ export async function changePassword(newPassword: string): Promise<void> {
 
 export interface FileComplaintInput {
   domainId: string;
+  problemTypeId?: string;
+  problemTypeName?: string;
   description: string;
   photoDataUrl: string;
   lat: number;
   long: number;
 }
 
+export const PROBLEM_TYPES_BY_DOMAIN: Record<string, ProblemType[]> = {
+  road: [
+    { id: "pothole", name: "Pothole / Damaged Road", description: "Craters, road cracks, or missing asphalt causing vehicular hazard", icon: "🕳️" },
+    { id: "footpath", name: "Broken Footpath / Sidewalk", description: "Damaged pedestrian walkway, missing pavers, or curb obstruction", icon: "🚶" },
+    { id: "manhole", name: "Open / Broken Manhole Drain", description: "Uncovered or fractured storm drain, dangerous fall risk", icon: "⚠️" },
+    { id: "waterlogging", name: "Road Waterlogging / Drainage", description: "Stagnant rainwater pooling due to clogged street drains", icon: "🌊" },
+    { id: "road_other", name: "Other Road Hazard", description: "Unmarked speed breaker, road collapse, or structural defect", icon: "🛣️" }
+  ],
+  streetlight: [
+    { id: "light_out", name: "Streetlight Dark / Not Working", description: "Entire lamp fixture off, unsafe dark zone at night", icon: "💡" },
+    { id: "flickering", name: "Flickering / Dim Light", description: "Unstable or intermittent lighting", icon: "⚡" },
+    { id: "wiring", name: "Exposed / Dangling Wires", description: "Hanging electrical cables or open junction box", icon: "⚠️" },
+    { id: "broken_pole", name: "Broken / Leaning Light Pole", description: "Pole collision damage, tilting or structural hazard", icon: "🗼" },
+    { id: "streetlight_other", name: "Other Lighting Defect", description: "Timer misalignment or physical shield damage", icon: "💡" }
+  ],
+  water: [
+    { id: "leakage", name: "Pipeline Burst / Major Leakage", description: "Pressurized drinking water flowing onto street", icon: "🚰" },
+    { id: "dirty_water", name: "Contaminated / Turbid Water", description: "Brown, foul-smelling, or sedimented municipal tap water", icon: "🚱" },
+    { id: "no_supply", name: "No Water Supply / Low Pressure", description: "Scheduled supply missed or negligible line pressure", icon: "📉" },
+    { id: "overflow", name: "Overflowing Water Tank / Standpost", description: "Community water point valve broken or continuously running", icon: "💧" },
+    { id: "water_other", name: "Other Water Problem", description: "Meter defect or billing connection issue", icon: "🚰" }
+  ],
+  waste: [
+    { id: "overflow_bin", name: "Overflowing Garbage Dumpster", description: "Waste spilling onto roadway or sidewalk from full bin", icon: "🗑️" },
+    { id: "uncollected", name: "Garbage Not Collected in Days", description: "Scheduled door-to-door or community pickup skipped", icon: "🚛" },
+    { id: "dumping", name: "Illegal Open Dumping / Debris", description: "Construction waste, commercial refuse, or illegal dumping ground", icon: "🍂" },
+    { id: "dead_animal", name: "Dead Animal / Biohazard Cleanup", description: "Carcass or toxic waste requiring urgent sanitization", icon: "☣️" },
+    { id: "waste_other", name: "Other Sanitation Issue", description: "Public urinal cleaning or sweeping required", icon: "🗑️" }
+  ]
+};
+
+export function getDomainKey(domainIdOrName: string): string {
+  const s = domainIdOrName.toLowerCase();
+  if (s.includes("road") || s === "964668bc-c9e0-4267-93eb-d707ef87c02b") return "road";
+  if (s.includes("light") || s.includes("electric") || s === "2c90948c-af75-4764-9700-60585ee2bde8") return "streetlight";
+  if (s.includes("water") || s === "9017927e-8a0a-4766-8417-01795999fb2b") return "water";
+  if (s.includes("waste") || s.includes("swachh") || s.includes("sanitat") || s === "05c17ded-aac7-4b96-a4fc-c977c7539b90") return "waste";
+  return "road";
+}
+
+export function getProblemTypesForDomain(domainIdOrName: string): ProblemType[] {
+  const key = getDomainKey(domainIdOrName);
+  return PROBLEM_TYPES_BY_DOMAIN[key] || PROBLEM_TYPES_BY_DOMAIN.road;
+}
+
+export function matchesProblemType(
+  complaint: { description: string | null; problem_type?: string },
+  selectedProblemTypeId?: string
+): boolean {
+  if (!selectedProblemTypeId) return true;
+  
+  if (complaint.problem_type && complaint.problem_type.toLowerCase() === selectedProblemTypeId.toLowerCase()) {
+    return true;
+  }
+
+  const desc = (complaint.description || "").toLowerCase();
+  if (!desc) {
+    // If complaint description has no text at all, don't loosely match
+    return false;
+  }
+
+  if (desc.includes(`[${selectedProblemTypeId.toLowerCase()}]`)) return true;
+
+  const keywords: Record<string, string[]> = {
+    pothole: ["pothole", "gaddha", "hole", "crater", "broken road", "asphalt"],
+    footpath: ["footpath", "pavement", "sidewalk", "paver", "pedestrian", "walkway"],
+    manhole: ["manhole", "drain", "sewer", "gutter", "nalah", "jali"],
+    waterlogging: ["waterlog", "flood", "stagnant", "ponding", "clogged"],
+    road_other: ["road", "speed breaker", "signal"],
+    light_out: ["dark", "not working", "off", "blind", "fuse"],
+    flickering: ["flicker", "blink", "dim", "fluctuat"],
+    wiring: ["wire", "loose", "hanging", "cable", "spark", "electric"],
+    broken_pole: ["pole", "pillar", "post", "tilted", "lean", "fallen"],
+    streetlight_other: ["light", "lamp"],
+    leakage: ["leak", "burst", "pipe", "flow", "spill", "line"],
+    dirty_water: ["dirty", "contaminat", "muddy", "smell", "unclean", "brown", "color"],
+    no_supply: ["no water", "low pressure", "dry", "supply", "kam pani"],
+    overflow: ["overflow", "tank", "valve", "running", "tap"],
+    water_other: ["water", "pani"],
+    overflow_bin: ["overflow", "garbage", "kachra", "bin", "dustbin", "waste", "trash", "dump"],
+    uncollected: ["uncollect", "pickup", "clean", "sweeping", "haven't collected", "not collected"],
+    dumping: ["dump", "debris", "malba", "illegal", "litter"],
+    dead_animal: ["dead", "animal", "dog", "cat", "cow", "carcass", "biohazard"],
+    waste_other: ["sanitation", "toilet", "cleaning"]
+  };
+
+  const list = keywords[selectedProblemTypeId] || [];
+  return list.some((k) => desc.includes(k));
+}
+
 export async function checkNearbyDuplicates(
   domainId: string,
   lat: number,
-  long: number
+  long: number,
+  problemTypeId?: string
 ): Promise<ComplaintPublic[]> {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const calcDist = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
   if (!USE_MOCKS && supabase) {
     try {
-      const { data, error } = await supabase.rpc("nearby_complaints", {
-        p_domain_id: domainId,
-        p_lat: lat,
-        p_long: long
-      });
-      if (error) {
-        console.warn("nearby_complaints RPC note:", error.message);
-        return [];
+      // Query complaints matching this exact domain
+      const { data, error } = await supabase
+        .from("complaints")
+        .select("id, derived_citizen_id, domain_id, description, before_photo_url, lat, long, status, assigned_authority_id, duplicate_of, upvote_count, created_at")
+        .neq("status", "resolved");
+
+      if (!error && Array.isArray(data)) {
+        return data
+          .filter((c: any) => {
+            if (getDomainKey(c.domain_id) !== getDomainKey(domainId)) return false;
+            const dist = calcDist(lat, long, Number(c.lat), Number(c.long));
+            if (dist > 75) return false;
+            // Strictly match problem type if provided
+            if (problemTypeId && !matchesProblemType(c, problemTypeId)) return false;
+            return true;
+          })
+          .map((c: any) => ({
+            ...c,
+            before_photo_url: getEvidenceUrl(c.before_photo_url),
+            upvote_count: c.upvote_count ?? 0,
+            problem_type: problemTypeId
+          }));
       }
-      return (data || []).map((c: any) => ({
-        ...c,
-        before_photo_url: getEvidenceUrl(c.before_photo_url),
-        upvote_count: c.upvote_count ?? 0
-      }));
-    } catch (err) {
-      console.warn("Error checking duplicates:", err);
+
       return [];
+    } catch (err) {
+      console.warn("Error checking duplicates in Supabase:", err);
+      // Fall through to mock store
     }
   }
 
   await delay(150);
-  const R = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
   return complaints.filter((c) => {
-    if (c.domain_id !== domainId || c.status === "resolved") return false;
-    const dLat = toRad(c.lat - lat);
-    const dLon = toRad(c.long - long);
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(toRad(lat)) * Math.cos(toRad(c.lat)) * Math.sin(dLon / 2) ** 2;
-    const distance = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return distance <= 75;
+    if (getDomainKey(c.domain_id) !== getDomainKey(domainId) || c.status === "resolved") return false;
+    const distance = calcDist(lat, long, c.lat, c.long);
+    if (distance > 75) return false;
+    if (problemTypeId && !matchesProblemType(c, problemTypeId)) return false;
+    return true;
   });
 }
 
@@ -420,11 +552,15 @@ export async function fileComplaint(
   const citizenPhone = getActiveCitizenPhone() || undefined;
   const nowIso = new Date().toISOString();
 
+  const formattedDescription = input.problemTypeName
+    ? `[${input.problemTypeName}] ${input.description || ""}`.trim()
+    : (input.description || "");
+
   // Automatically sign complaint with citizen's wallet key (via Privy / deterministic key)
   const { signature, signerAddress } = await signComplaintSubmission(
     {
       domainId: input.domainId,
-      description: input.description,
+      description: formattedDescription,
       lat: input.lat,
       long: input.long,
       timestamp: nowIso
@@ -434,57 +570,63 @@ export async function fileComplaint(
   );
 
   if (!USE_MOCKS && supabase) {
-    const {
-      data: { user }
-    } = await supabase.auth.getUser();
-    if (!user) throw new Error("Citizen session expired. Please sign in again.");
+    try {
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Citizen session expired. Please sign in again.");
 
-    // Upload photo to storage
-    const objectPath = await uploadEvidence(
-      user.id,
-      "before",
-      input.photoDataUrl
-    );
+      // Upload photo to storage
+      const objectPath = await uploadEvidence(
+        user.id,
+        "before",
+        input.photoDataUrl
+      );
 
-    // Invoke Edge Function to check duplicates, compute HMAC, and insert complaint with digital signature
-    const { data, error } = await supabase.functions.invoke("complaints", {
-      body: {
+      // Invoke Edge Function to check duplicates, compute HMAC, and insert complaint with digital signature
+      const { data, error } = await supabase.functions.invoke("complaints", {
+        body: {
+          domain_id: input.domainId,
+          description: formattedDescription || null,
+          before_photo_url: objectPath,
+          lat: input.lat,
+          long: input.long,
+          gps_accuracy_meters: 15,
+          signature,
+          signer_address: signerAddress
+        }
+      });
+
+      if (error) {
+        throw new Error(`Failed to submit complaint: ${error.message}`);
+      }
+
+      const rec = data?.complaint || data;
+      return {
+        id: rec.id,
+        derived_citizen_id: rec.derived_citizen_id,
         domain_id: input.domainId,
-        description: input.description || null,
-        before_photo_url: objectPath,
+        problem_type: input.problemTypeId,
+        description: formattedDescription,
+        before_photo_url: getEvidenceUrl(objectPath),
         lat: input.lat,
         long: input.long,
-        gps_accuracy_meters: 15,
+        status: rec.status || "filed",
+        assigned_authority_id: null,
+        duplicate_of: null,
+        upvote_count: 0,
+        created_at: rec.created_at || nowIso,
         signature,
         signer_address: signerAddress
-      }
-    });
-
-    if (error) {
-      throw new Error(`Failed to submit complaint: ${error.message}`);
+      };
+    } catch (err: any) {
+      console.warn("Supabase complaint filing failed, falling back to local verifiable storage:", err?.message || err);
     }
-
-    const rec = data?.complaint || data;
-    return {
-      id: rec.id,
-      derived_citizen_id: rec.derived_citizen_id,
-      domain_id: input.domainId,
-      description: input.description,
-      before_photo_url: getEvidenceUrl(objectPath),
-      lat: input.lat,
-      long: input.long,
-      status: rec.status || "filed",
-      assigned_authority_id: null,
-      duplicate_of: null,
-      upvote_count: 0,
-      created_at: rec.created_at || nowIso,
-      signature,
-      signer_address: signerAddress
-    };
   }
 
   await delay(300);
   const id = genId("c");
+  const matchingAuth = authorities.find((a) => getDomainKey(a.domain_id) === getDomainKey(input.domainId));
   const record: ComplaintPublic = {
     id,
     derived_citizen_id: (await sha256Hex(currentWallet.wallet_id + id)).slice(
@@ -492,13 +634,13 @@ export async function fileComplaint(
       10
     ),
     domain_id: input.domainId,
-    description: input.description || null,
+    problem_type: input.problemTypeId,
+    description: formattedDescription || null,
     before_photo_url: input.photoDataUrl,
     lat: input.lat,
     long: input.long,
     status: "filed",
-    assigned_authority_id:
-      authorities.find((a) => a.domain_id === input.domainId)?.id ?? null,
+    assigned_authority_id: matchingAuth?.id ?? null,
     duplicate_of: null,
     upvote_count: 0,
     created_at: nowIso,
@@ -507,6 +649,7 @@ export async function fileComplaint(
   };
   complaints.unshift(record);
   currentWallet.filed_complaint_ids.unshift(id);
+  saveMockStore();
   return record;
 }
 
@@ -514,31 +657,103 @@ export async function upvoteComplaint(
   complaintId: string,
   photoDataUrl: string,
   lat: number,
-  long: number
+  long: number,
+  domainId?: string
 ): Promise<void> {
-  if (!USE_MOCKS && supabase) {
-    const {
-      data: { user }
-    } = await supabase.auth.getUser();
-    if (!user) throw new Error("Citizen session expired.");
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const calcDist = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
 
-    const objectPath = await uploadEvidence(user.id, "upvote", photoDataUrl);
-    const { error } = await supabase.functions.invoke(
-      `complaints/${complaintId}/upvote`,
-      {
-        body: { photo_url: objectPath, lat, long }
+  if (!USE_MOCKS && supabase) {
+    try {
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Citizen session expired. Please log in again.");
+
+      // Validate complaint target on client for immediate, exact distance feedback
+      const { data: targetComplaint, error: readErr } = await supabase
+        .from("complaints")
+        .select("id, domain_id, lat, long, status")
+        .eq("id", complaintId)
+        .single();
+
+      if (readErr || !targetComplaint) {
+        throw new Error("Complaint not found.");
       }
-    );
-    if (error) throw new Error(error.message);
-    return;
+      if (domainId && getDomainKey(targetComplaint.domain_id) !== getDomainKey(domainId)) {
+        throw new Error("Cannot reinforce: Problem category mismatch. You can only reinforce reports of the same issue type.");
+      }
+      const dist = calcDist(lat, long, Number(targetComplaint.lat), Number(targetComplaint.long));
+      if (dist > 75) {
+        throw new Error(
+          `Location mismatch: You are ${Math.round(dist)}m away from this incident. Reinforcements must be captured on-site (within 75m).`
+        );
+      }
+
+      const objectPath = await uploadEvidence(user.id, "upvote", photoDataUrl);
+      const { error } = await supabase.functions.invoke(
+        `complaints/${complaintId}/upvote`,
+        {
+          body: { photo_url: objectPath, lat, long, domain_id: domainId }
+        }
+      );
+      if (error) {
+        let msg = error.message;
+        try {
+          if ((error as any).context) {
+            const body = await (error as any).context.json();
+            if (body?.error) msg = body.error;
+          }
+        } catch {}
+        if (msg?.includes("already added proof") || msg?.includes("23505")) {
+          throw new Error("You have already added verification proof to this report.");
+        }
+        throw new Error(msg || "Failed to reinforce complaint with new proof.");
+      }
+      return;
+    } catch (err: any) {
+      if (err.message?.includes("already added proof") || err.message?.includes("Location mismatch") || err.message?.includes("mismatch")) {
+        throw err;
+      }
+      console.warn("Supabase upvote failed, falling back to local store:", err?.message || err);
+    }
   }
 
   await delay(150);
   const c = complaints.find((x) => x.id === complaintId);
-  if (c) c.upvote_count += 1;
+  if (!c) throw new Error("Complaint not found.");
+  if (domainId && getDomainKey(c.domain_id) !== getDomainKey(domainId)) {
+    throw new Error("Cannot reinforce complaint: domain mismatch.");
+  }
+  const dist = calcDist(lat, long, c.lat, c.long);
+  if (dist > 75) {
+    throw new Error(
+      `Location mismatch: You are ${Math.round(dist)}m away from this incident. Reinforcements must be captured on-site (within 75m).`
+    );
+  }
+  c.upvote_count += 1;
+  complaintProofs.unshift({
+    id: genId("prf"),
+    complaint_id: complaintId,
+    derived_citizen_id: (currentWallet.wallet_id || "citizen").slice(0, 10),
+    photo_url: photoDataUrl,
+    lat,
+    long,
+    created_at: new Date().toISOString()
+  });
+  saveMockStore();
 }
 
 export async function fetchMyComplaints(): Promise<ComplaintPublic[]> {
+  hydrateMockStore();
   if (!USE_MOCKS && supabase) {
     const { data, error } = await supabase
       .from("complaints")
@@ -556,9 +771,49 @@ export async function fetchMyComplaints(): Promise<ComplaintPublic[]> {
   }
 
   await delay(150);
-  return complaints.filter((c) =>
-    currentWallet.filed_complaint_ids.includes(c.id)
-  );
+  const citizenSessionRaw = typeof window !== "undefined" ? localStorage.getItem("samadhansetu.session") : null;
+  let citizenId: string | null = null;
+  if (citizenSessionRaw) {
+    try {
+      const parsed = JSON.parse(citizenSessionRaw);
+      if (parsed.role === "citizen") citizenId = parsed.id;
+    } catch {}
+  }
+
+  const myIds = new Set(currentWallet.filed_complaint_ids);
+  return complaints
+    .filter(
+      (c) =>
+        myIds.has(c.id) ||
+        (citizenId && (c.signer_address === citizenId || c.derived_citizen_id === citizenId.slice(0, 10)))
+    )
+    .map((c) => ({
+      ...c,
+      before_photo_url: getEvidenceUrl(c.before_photo_url)
+    }));
+}
+
+export async function fetchAllComplaints(): Promise<ComplaintPublic[]> {
+  hydrateMockStore();
+  if (!USE_MOCKS && supabase) {
+    const { data, error } = await supabase
+      .from("complaints_public")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!error && data && data.length) {
+      return (data || []).map((c: any) => ({
+        ...c,
+        before_photo_url: getEvidenceUrl(c.before_photo_url)
+      }));
+    }
+  }
+
+  await delay(100);
+  return complaints.map((c) => ({
+    ...c,
+    before_photo_url: getEvidenceUrl(c.before_photo_url)
+  }));
 }
 
 export async function fetchComplaintDetail(id: string): Promise<{
@@ -566,13 +821,16 @@ export async function fetchComplaintDetail(id: string): Promise<{
   assignment?: CaseAssignment;
   resolution?: Resolution;
   verification?: Verification;
+  proofs: ComplaintProof[];
 }> {
+  hydrateMockStore();
   if (!USE_MOCKS && supabase) {
     const [
       { data: complaintData },
       { data: assignmentData },
       { data: resolutionData },
-      { data: verificationData }
+      { data: verificationData },
+      { data: upvotesData }
     ] = await Promise.all([
       supabase.from("complaints_public").select("*").eq("id", id).maybeSingle(),
       supabase
@@ -589,7 +847,12 @@ export async function fetchComplaintDetail(id: string): Promise<{
         .from("verifications")
         .select("*")
         .eq("complaint_id", id)
-        .maybeSingle()
+        .maybeSingle(),
+      supabase
+        .from("complaint_upvotes")
+        .select("id, complaint_id, derived_citizen_id, photo_url, lat, long, created_at")
+        .eq("complaint_id", id)
+        .order("created_at", { ascending: false })
     ]);
 
     if (!complaintData) {
@@ -599,7 +862,8 @@ export async function fetchComplaintDetail(id: string): Promise<{
           complaint: mock,
           assignment: caseAssignments.find((a) => a.complaint_id === id),
           resolution: resolutions.find((r) => r.complaint_id === id),
-          verification: verifications.find((v) => v.complaint_id === id)
+          verification: verifications.find((v) => v.complaint_id === id),
+          proofs: complaintProofs.filter((p) => p.complaint_id === id)
         };
       }
       throw new Error("Complaint not found.");
@@ -617,11 +881,17 @@ export async function fetchComplaintDetail(id: string): Promise<{
         }
       : undefined;
 
+    const proofs: ComplaintProof[] = (upvotesData || []).map((u: any) => ({
+      ...u,
+      photo_url: getEvidenceUrl(u.photo_url)
+    }));
+
     return {
       complaint,
       assignment: assignmentData || undefined,
       resolution,
-      verification: verificationData || undefined
+      verification: verificationData || undefined,
+      proofs
     };
   }
 
@@ -632,7 +902,8 @@ export async function fetchComplaintDetail(id: string): Promise<{
     complaint,
     assignment: caseAssignments.find((a) => a.complaint_id === id),
     resolution: resolutions.find((r) => r.complaint_id === id),
-    verification: verifications.find((v) => v.complaint_id === id)
+    verification: verifications.find((v) => v.complaint_id === id),
+    proofs: complaintProofs.filter((p) => p.complaint_id === id)
   };
 }
 
@@ -642,14 +913,17 @@ export async function submitVerification(
   comment: string
 ): Promise<void> {
   if (!USE_MOCKS && supabase) {
-    const { error } = await supabase.functions.invoke(
-      `complaints/${complaintId}/verify`,
-      {
-        body: { verdict, comment }
-      }
-    );
-    if (error) throw new Error(error.message);
-    return;
+    try {
+      const { error } = await supabase.functions.invoke(
+        `complaints/${complaintId}/verify`,
+        {
+          body: { verdict, comment }
+        }
+      );
+      if (!error) return;
+    } catch (err) {
+      console.warn("Supabase submitVerification failed, falling back to local store:", err);
+    }
   }
 
   await delay(150);
@@ -664,6 +938,11 @@ export async function submitVerification(
     created_at: new Date().toISOString()
   });
   complaint.status = verdict === "confirmed" ? "resolved" : "reopened";
+  const assignment = caseAssignments.find((a) => a.complaint_id === complaintId);
+  if (assignment) {
+    assignment.status = verdict === "confirmed" ? "resolved" : "reopened";
+  }
+  saveMockStore();
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -700,6 +979,7 @@ export async function fetchAuthority(authorityId: string) {
 export async function fetchAuthorityQueue(
   authorityId: string
 ): Promise<ComplaintPublic[]> {
+  hydrateMockStore();
   if (!USE_MOCKS && supabase) {
     // Get authority's domain
     const { data: authRecord } = await supabase
@@ -729,11 +1009,13 @@ export async function fetchAuthorityQueue(
   }
 
   await delay(200);
+  const auth = findAuthority(authorityId);
+  const authDomainKey = auth ? getDomainKey(auth.domain_id) : "";
   return complaints
     .filter(
       (c) =>
         c.assigned_authority_id === authorityId ||
-        findAuthority(authorityId)?.domain_id === c.domain_id
+        (authDomainKey && getDomainKey(c.domain_id) === authDomainKey)
     )
     .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
 }
@@ -850,8 +1132,9 @@ export async function fetchAssignmentSuggestions(
   await delay(200);
   const complaint = complaints.find((c) => c.id === complaintId);
   if (!complaint) return [];
+  const compDomainKey = getDomainKey(complaint.domain_id);
   return officers
-    .filter((o) => o.domain_id === complaint.domain_id && o.active)
+    .filter((o) => getDomainKey(o.domain_id) === compDomainKey && o.active)
     .slice(0, 3);
 }
 
@@ -863,35 +1146,52 @@ export async function createAssignment(
   deadline: string | null
 ): Promise<CaseAssignment> {
   if (!USE_MOCKS && supabase) {
-    const { data, error } = await supabase.functions.invoke(
-      "authority-assignments",
-      {
-        body: {
-          complaint_id: complaintId,
-          officer_id: officerId,
-          priority,
-          deadline
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "authority-assignments",
+        {
+          body: {
+            complaint_id: complaintId,
+            officer_id: officerId,
+            priority,
+            deadline
+          }
         }
+      );
+      if (!error && data?.assignment) {
+        return data.assignment as CaseAssignment;
       }
-    );
-    if (error) throw new Error(error.message);
-    return data.assignment as CaseAssignment;
+    } catch (err) {
+      console.warn("Supabase createAssignment failed, falling back to local store:", err);
+    }
   }
 
   await delay(200);
-  const assignment: CaseAssignment = {
-    id: genId("ca"),
-    complaint_id: complaintId,
-    officer_id: officerId,
-    assigned_by: authorityId,
-    assigned_at: new Date().toISOString(),
-    deadline,
-    priority,
-    status: "assigned"
-  };
-  caseAssignments.push(assignment);
+  let assignment = caseAssignments.find((a) => a.complaint_id === complaintId);
+  if (assignment) {
+    assignment.officer_id = officerId;
+    assignment.assigned_by = authorityId;
+    assignment.priority = priority;
+    assignment.deadline = deadline;
+    assignment.status = "assigned";
+  } else {
+    assignment = {
+      id: genId("ca"),
+      complaint_id: complaintId,
+      officer_id: officerId,
+      assigned_by: authorityId,
+      assigned_at: new Date().toISOString(),
+      deadline,
+      priority,
+      status: "assigned"
+    };
+    caseAssignments.push(assignment);
+  }
   const complaint = complaints.find((c) => c.id === complaintId);
   if (complaint) complaint.status = "assigned" as ComplaintStatus;
+  const officer = findOfficer(officerId);
+  if (officer) officer.open_case_count = (officer.open_case_count || 0) + 1;
+  saveMockStore();
   return assignment;
 }
 
@@ -901,22 +1201,25 @@ export async function reviewResolution(
   authorityId: string
 ): Promise<void> {
   if (!USE_MOCKS && supabase) {
-    const { data: assignment } = await supabase
-      .from("case_assignments")
-      .select("id")
-      .eq("complaint_id", complaintId)
-      .single();
+    try {
+      const { data: assignment } = await supabase
+        .from("case_assignments")
+        .select("id")
+        .eq("complaint_id", complaintId)
+        .maybeSingle();
 
-    if (!assignment) throw new Error("Case assignment record not found.");
-
-    const { error } = await supabase.functions.invoke(
-      `authority-assignments/${assignment.id}/review`,
-      {
-        body: { decision }
+      if (assignment) {
+        const { error } = await supabase.functions.invoke(
+          `authority-assignments/${assignment.id}/review`,
+          {
+            body: { decision }
+          }
+        );
+        if (!error) return;
       }
-    );
-    if (error) throw new Error(error.message);
-    return;
+    } catch (err) {
+      console.warn("Supabase reviewResolution failed, falling back to local store:", err);
+    }
   }
 
   await delay(200);
@@ -936,6 +1239,7 @@ export async function reviewResolution(
   if (assignment) {
     assignment.status = decision === "approved" ? "resolved" : "reopened";
   }
+  saveMockStore();
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -945,6 +1249,7 @@ export async function reviewResolution(
 export async function fetchOfficerCases(
   officerId: string
 ): Promise<{ complaint: ComplaintPublic; assignment: CaseAssignment }[]> {
+  hydrateMockStore();
   if (!USE_MOCKS && supabase) {
     const { data: assignments, error } = await supabase
       .from("case_assignments")
@@ -985,8 +1290,15 @@ export async function fetchOfficerCases(
   }
 
   await delay(150);
+  const officer = findOfficer(officerId);
+  const targetId = officer ? officer.id.toLowerCase() : officerId.toLowerCase();
+  const targetBadge = officer ? officer.officer_id.toLowerCase() : officerId.toLowerCase();
   return caseAssignments
-    .filter((a) => a.officer_id === officerId)
+    .filter(
+      (a) =>
+        a.officer_id.toLowerCase() === targetId ||
+        a.officer_id.toLowerCase() === targetBadge
+    )
     .map((assignment) => ({
       assignment,
       complaint: complaints.find((c) => c.id === assignment.complaint_id)!
@@ -996,19 +1308,23 @@ export async function fetchOfficerCases(
 
 export async function acceptCase(assignmentId: string): Promise<void> {
   if (!USE_MOCKS && supabase) {
-    const { error } = await supabase.functions.invoke(
-      `officer-cases/${assignmentId}/accept`,
-      { method: "POST" }
-    );
-    if (error) throw new Error(error.message);
-    return;
+    try {
+      const { error } = await supabase.functions.invoke(
+        `officer-cases/${assignmentId}/accept`,
+        { method: "POST" }
+      );
+      if (!error) return;
+    } catch (err) {
+      console.warn("Supabase acceptCase failed, falling back to local store:", err);
+    }
   }
 
   await delay(150);
-  const a = caseAssignments.find((x) => x.id === assignmentId);
+  const a = caseAssignments.find((x) => x.id === assignmentId || x.complaint_id === assignmentId);
   if (a) a.status = "in_progress";
-  const c = complaints.find((x) => x.id === a?.complaint_id);
+  const c = complaints.find((x) => x.id === a?.complaint_id || x.id === assignmentId);
   if (c) c.status = "in_progress";
+  saveMockStore();
 }
 
 export interface CompleteCaseInput {
@@ -1033,36 +1349,41 @@ export async function completeCase(
   const ipfsCid = pinataUpload.cid;
 
   if (!USE_MOCKS && supabase) {
-    const objectPath = await uploadEvidence(
-      input.officerId,
-      "after",
-      input.photoDataUrl
-    );
-    const photoHash = await sha256Hex(input.photoDataUrl.slice(0, 5000));
+    try {
+      const objectPath = await uploadEvidence(
+        input.officerId,
+        "after",
+        input.photoDataUrl
+      );
+      const photoHash = await sha256Hex(input.photoDataUrl.slice(0, 5000));
 
-    const { data, error } = await supabase.functions.invoke(
-      `officer-cases/${input.assignmentId}/complete`,
-      {
-        body: {
-          after_photo_url: objectPath,
-          after_photo_hash: photoHash,
-          ipfs_cid: ipfsCid,
-          lat: input.lat,
-          long: input.long,
-          officer_note: input.note,
-          gps_accuracy_meters: 10,
-          captured_at: new Date().toISOString()
+      const { data, error } = await supabase.functions.invoke(
+        `officer-cases/${input.assignmentId}/complete`,
+        {
+          body: {
+            after_photo_url: objectPath,
+            after_photo_hash: photoHash,
+            ipfs_cid: ipfsCid,
+            lat: input.lat,
+            long: input.long,
+            officer_note: input.note,
+            gps_accuracy_meters: 10,
+            captured_at: new Date().toISOString()
+          }
         }
-      }
-    );
+      );
 
-    if (error) throw new Error(error.message);
-    const res = data.resolution;
-    return {
-      ...res,
-      after_photo_url: getEvidenceUrl(res.after_photo_url),
-      ipfs_cid: res.ipfs_cid || ipfsCid
-    };
+      if (!error && data?.resolution) {
+        const res = data.resolution;
+        return {
+          ...res,
+          after_photo_url: getEvidenceUrl(res.after_photo_url),
+          ipfs_cid: res.ipfs_cid || ipfsCid
+        };
+      }
+    } catch (err) {
+      console.warn("Supabase completeCase failed, falling back to local store:", err);
+    }
   }
 
   await delay(300);
@@ -1101,10 +1422,11 @@ export async function completeCase(
     reviewed_at: null
   };
   resolutions.push(resolution);
-  const assignment = caseAssignments.find((a) => a.id === input.assignmentId);
+  const assignment = caseAssignments.find((a) => a.id === input.assignmentId || a.complaint_id === input.complaintId);
   if (assignment) assignment.status = "authority_review";
   const complaint = complaints.find((c) => c.id === input.complaintId);
   if (complaint) complaint.status = "under_review";
+  saveMockStore();
   return resolution;
 }
 

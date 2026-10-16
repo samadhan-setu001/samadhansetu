@@ -27,8 +27,7 @@ echo.
 echo --------------------------------------------------------
 echo Step 2: Deploying to Production with Supabase Config
 echo --------------------------------------------------------
-echo.
-call npx vercel --prod -e NEXT_PUBLIC_SUPABASE_URL=https://yjwrhggsihmyleugbfco.supabase.co -e NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_LYAew7VOa5YtNqFyj0s3RQ_BprS-f1M -b NEXT_PUBLIC_SUPABASE_URL=https://yjwrhggsihmyleugbfco.supabase.co -b NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_LYAew7VOa5YtNqFyj0s3RQ_BprS-f1M
+call npx vercel --prod
 
 echo.
 pause

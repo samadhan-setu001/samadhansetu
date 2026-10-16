@@ -10,7 +10,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { LiveCameraCapture } from "@/components/camera/LiveCameraCapture";
 import { ComplaintTimeline } from "@/components/status/ComplaintTimeline";
 import { useRequireRole } from "@/lib/hooks/useRequireRole";
-import { acceptCase, completeCase, fetchComplaintDetail, getEvidenceUrl } from "@/lib/api";
+import { acceptCase, completeCase, fetchComplaintDetail } from "@/lib/api";
+import { EvidenceImage } from "@/components/ui/EvidenceImage";
 import { getIpfsGatewayUrl } from "@/lib/pinata";
 import { getExplorerAddressUrl, OFFICER_REPUTATION_ADDRESS } from "@/lib/blockchain";
 import { BlockchainVerificationModal } from "@/components/blockchain/BlockchainVerificationModal";
@@ -36,6 +37,8 @@ export default function OfficerCaseDetailPage() {
   const [afterGeo, setAfterGeo] = useState<{ lat: number; long: number } | null>(null);
   const [showBlockchainModal, setShowBlockchainModal] = useState(false);
 
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   const load = async () => {
     setData(await fetchComplaintDetail(params.id));
   };
@@ -50,26 +53,40 @@ export default function OfficerCaseDetailPage() {
   const accept = async () => {
     if (!data?.assignment) return;
     setBusy(true);
-    await acceptCase(data.assignment.id);
-    await load();
-    setBusy(false);
+    setSubmitError(null);
+    try {
+      await acceptCase(data.assignment.id);
+      await load();
+    } catch (err: any) {
+      setSubmitError(err.message || "Failed to accept case.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const submitCompletion = async () => {
     if (!data?.assignment || !afterPhoto || !afterGeo) return;
     setBusy(true);
-    await completeCase({
-      assignmentId: data.assignment.id,
-      complaintId: data.complaint.id,
-      officerId: session.id,
-      photoDataUrl: afterPhoto,
-      note,
-      lat: afterGeo.lat,
-      long: afterGeo.long
-    });
-    setBusy(false);
-    setCapturing(false);
-    router.push("/officer/cases");
+    setSubmitError(null);
+    try {
+      await completeCase({
+        assignmentId: data.assignment.id,
+        complaintId: data.complaint.id,
+        officerId: session.id,
+        photoDataUrl: afterPhoto,
+        note,
+        lat: afterGeo.lat,
+        long: afterGeo.long
+      });
+      setBusy(false);
+      setCapturing(false);
+      router.push("/officer/cases");
+    } catch (err: any) {
+      console.error("Resolution submission error:", err);
+      setSubmitError(err.message || "Failed to submit resolution evidence.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const canAccept = data?.assignment?.status === "assigned";
@@ -105,8 +122,9 @@ export default function OfficerCaseDetailPage() {
             <div className="mt-5">
               <p className="mb-1.5 text-xs font-semibold text-ink-soft">Citizen Field Report Proof</p>
               <div className="aspect-video w-full overflow-hidden rounded-xl border border-paper-line shadow-sm">
-                <img
-                  src={getEvidenceUrl(data.complaint.before_photo_url)}
+                <EvidenceImage
+                  src={data.complaint.before_photo_url}
+                  domainId={data.complaint.domain_id}
                   alt="Before"
                   className="h-full w-full object-cover"
                 />
@@ -174,6 +192,12 @@ export default function OfficerCaseDetailPage() {
                       />
                     </div>
 
+                    {submitError && (
+                      <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-brick">
+                        {submitError}
+                      </div>
+                    )}
+
                     <div className="mt-4 flex gap-3">
                       <Button
                         variant="secondary"
@@ -203,8 +227,9 @@ export default function OfficerCaseDetailPage() {
               <Card className="mt-5 p-6">
                 <h3 className="text-lg font-bold text-ink">Your Submitted Evidence</h3>
                 <div className="mt-3 aspect-video w-full overflow-hidden rounded-xl border border-paper-line shadow-sm">
-                  <img
-                    src={getEvidenceUrl(data.resolution.after_photo_url)}
+                  <EvidenceImage
+                    src={data.resolution.after_photo_url}
+                    domainId={data.complaint.domain_id}
                     alt="After"
                     className="h-full w-full object-cover"
                   />

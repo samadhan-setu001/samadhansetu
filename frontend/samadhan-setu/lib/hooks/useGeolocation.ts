@@ -45,10 +45,27 @@ export function useGeolocation() {
           }
         });
       },
-      (err) => {
-        setState({ loading: false, error: err.message || "Couldn't get your location.", position: null });
+      () => {
+        // Fallback to standard accuracy on desktop/laptop where GPS hardware may not exist
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            setState({
+              loading: false,
+              error: null,
+              position: {
+                lat: pos.coords.latitude,
+                long: pos.coords.longitude,
+                accuracy: pos.coords.accuracy
+              }
+            });
+          },
+          (err) => {
+            setState({ loading: false, error: err.message || "Couldn't get your location.", position: null });
+          },
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+        );
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
   }, []);
 

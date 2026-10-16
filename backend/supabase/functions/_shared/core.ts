@@ -40,7 +40,8 @@ export function validLocation(lat: unknown, long: unknown): boolean {
 
 export function requestPath(req: Request): string[] {
   const marker = "/functions/v1/";
-  const part = new URL(req.url).pathname.split(marker)[1] ?? "";
+  const pathname = new URL(req.url).pathname;
+  const part = pathname.includes(marker) ? (pathname.split(marker)[1] ?? "") : pathname;
   return part.split("/").filter(Boolean);
 }
 

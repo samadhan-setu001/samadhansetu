@@ -7,7 +7,8 @@ import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useRequireRole } from "@/lib/hooks/useRequireRole";
-import { fetchOfficerCases, getEvidenceUrl } from "@/lib/api";
+import { fetchOfficerCases } from "@/lib/api";
+import { EvidenceImage } from "@/components/ui/EvidenceImage";
 import type { CaseAssignment, ComplaintPublic } from "@/lib/types";
 
 const NAV = [{ href: "/officer/cases", label: "My Field Cases" }];
@@ -51,9 +52,10 @@ export default function OfficerCasesPage() {
         {cases?.map(({ complaint, assignment }) => (
           <Link key={complaint.id} href={`/officer/cases/${complaint.id}`}>
             <Card className="flex items-center gap-4 p-4 hover:border-officer/50 hover:shadow-card-hover transition-all">
-              <img
-                src={getEvidenceUrl(complaint.before_photo_url)}
-                alt=""
+              <EvidenceImage
+                src={complaint.before_photo_url}
+                domainId={complaint.domain_id}
+                alt={complaint.description || "Civic issue"}
                 className="h-16 w-16 flex-shrink-0 rounded-lg object-cover border border-paper-line"
               />
               <div className="min-w-0 flex-1">

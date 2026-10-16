@@ -4,6 +4,12 @@
 -- 3. Add ipfs_cid to resolutions for Pinata IPFS storage
 -- 4. Update complaints_public view to expose Web3 fields
 
+-- Temporarily drop policies depending on wallet_id
+drop policy if exists "citizens read own wallet" on public.citizen_wallets;
+drop policy if exists "citizens read own complaints" on public.complaints;
+drop policy if exists "citizens read own upvotes" on public.complaint_upvotes;
+drop policy if exists "citizens read own verifications" on public.verifications;
+
 -- Temporarily drop foreign key constraints referencing citizen_wallets(wallet_id) to alter type to text
 alter table public.complaints drop constraint if exists complaints_wallet_id_fkey;
 alter table public.complaint_upvotes drop constraint if exists complaint_upvotes_wallet_id_fkey;
@@ -27,6 +33,14 @@ alter table public.complaint_upvotes add constraint complaint_upvotes_wallet_id_
   foreign key (wallet_id) references public.citizen_wallets(wallet_id) on delete cascade;
 alter table public.verifications add constraint verifications_wallet_id_fkey 
   foreign key (wallet_id) references public.citizen_wallets(wallet_id) on delete cascade;
+
+-- Recreate policies for authenticated users
+create policy "citizens read own wallet" on public.citizen_wallets 
+  for select to authenticated using (wallet_id = auth.uid()::text);
+create policy "citizens read own upvotes" on public.complaint_upvotes 
+  for select to authenticated using (wallet_id = auth.uid()::text);
+create policy "citizens read own verifications" on public.verifications 
+  for select to authenticated using (wallet_id = auth.uid()::text);
 
 -- Add digital signature and signer address columns to complaints
 alter table public.complaints add column if not exists signature text;

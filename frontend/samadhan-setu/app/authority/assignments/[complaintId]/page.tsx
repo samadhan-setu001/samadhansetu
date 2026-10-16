@@ -12,9 +12,9 @@ import {
   createAssignment,
   fetchAssignmentSuggestions,
   fetchComplaintDetail,
-  reviewResolution,
-  getEvidenceUrl
+  reviewResolution
 } from "@/lib/api";
+import { EvidenceImage } from "@/components/ui/EvidenceImage";
 import type { CaseAssignment, ComplaintPublic, Officer, PriorityLevel, Resolution, Verification } from "@/lib/types";
 
 const NAV = [
@@ -102,8 +102,9 @@ export default function AssignmentPage() {
               <div>
                 <p className="mb-1.5 text-xs font-semibold text-ink-soft">Citizen Filing — Before</p>
                 <div className="aspect-square w-full overflow-hidden rounded-xl border border-paper-line shadow-sm">
-                  <img
-                    src={getEvidenceUrl(data.complaint.before_photo_url)}
+                  <EvidenceImage
+                    src={data.complaint.before_photo_url}
+                    domainId={data.complaint.domain_id}
                     alt="Before"
                     className="h-full w-full object-cover"
                   />
@@ -113,8 +114,9 @@ export default function AssignmentPage() {
                 <p className="mb-1.5 text-xs font-semibold text-ink-soft">Field Resolution — After</p>
                 {data.resolution ? (
                   <div className="aspect-square w-full overflow-hidden rounded-xl border border-paper-line shadow-sm">
-                    <img
-                      src={getEvidenceUrl(data.resolution.after_photo_url)}
+                    <EvidenceImage
+                      src={data.resolution.after_photo_url}
+                      domainId={data.complaint.domain_id}
                       alt="After"
                       className="h-full w-full object-cover"
                     />

@@ -10,5 +10,5 @@ echo Waiting a few seconds for the dev server to initialize before opening your 
 echo The server runs continuously in this window. Keep this window open!
 echo.
 start "" powershell -NoProfile -Command "Start-Sleep -Seconds 6; Start-Process 'http://localhost:3000'"
-npm run dev
+call npm run dev
 pause

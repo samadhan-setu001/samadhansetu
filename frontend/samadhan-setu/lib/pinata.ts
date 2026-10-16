@@ -100,6 +100,7 @@ export async function uploadToPinata(
         Authorization: `Bearer ${jwt}`,
       },
       body: formData,
+      signal: AbortSignal.timeout(4000),
     });
 
     if (!res.ok) {

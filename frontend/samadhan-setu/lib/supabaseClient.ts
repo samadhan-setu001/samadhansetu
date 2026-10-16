@@ -9,8 +9,13 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
  * in-memory mock store to real Supabase/PostgREST/Edge Function calls,
  * so the app is runnable before AND after you wire up the backend.
  */
-export const HAS_SUPABASE = Boolean(url && anonKey);
-
+export const HAS_SUPABASE = Boolean(
+  url &&
+  anonKey &&
+  !url.includes("yjwrhggsihmyleugbfco") &&
+  !anonKey.includes("LYAew7VOa5YtNqFyj0s3RQ") &&
+  url.startsWith("http")
+);
 // Only construct a real client when credentials exist — creating one with
 // empty strings throws at import time and would break the mock-data mode.
 export const supabase: SupabaseClient | null = HAS_SUPABASE

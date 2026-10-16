@@ -7,7 +7,8 @@ import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useRequireRole } from "@/lib/hooks/useRequireRole";
-import { fetchAuthorityQueue, getEvidenceUrl } from "@/lib/api";
+import { fetchAuthorityQueue } from "@/lib/api";
+import { EvidenceImage } from "@/components/ui/EvidenceImage";
 import type { ComplaintPublic, ComplaintStatus } from "@/lib/types";
 
 const NAV = [
@@ -96,9 +97,10 @@ export default function AuthorityDashboardPage() {
         {filtered?.map((c) => (
           <Link key={c.id} href={`/authority/assignments/${c.id}`}>
             <Card className="flex items-center gap-4 p-4 hover:border-steel/50 hover:shadow-card-hover transition-all">
-              <img
-                src={getEvidenceUrl(c.before_photo_url)}
-                alt=""
+              <EvidenceImage
+                src={c.before_photo_url}
+                domainId={c.domain_id}
+                alt={c.description || "Civic report"}
                 className="h-16 w-16 flex-shrink-0 rounded-lg object-cover border border-paper-line"
               />
               <div className="min-w-0 flex-1">
